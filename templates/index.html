@@ -1,1 +1,219 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Liquidación de Ganado 🐄</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+    input[type="number"] { width: 100px; }
 
+    .card-estado {
+        border-width: 2px;
+        background-color: #ffffff !important;
+        color: #000000 !important;
+    }
+
+    .estado-faltan {
+        border-color: #dc3545 !important; /* rojo */
+    }
+
+    .estado-sobran {
+        border-color: #ffc107 !important; /* amarillo */
+    }
+
+    .estado-exacto {
+        border-color: #28a745 !important; /* verde */
+    }
+    </style>
+</head>
+<body class="bg-light p-4">
+    <div class="container">
+        <h1 class="mb-4">Liquidación de Ganado 🐄</h1>
+        <button class="btn btn-primary mb-3 ms-2" onclick="exportarExcel()">
+        <i class="bi bi-download"></i> 
+        </button>
+
+
+        <div class="row g-3 mb-4">
+            <div class="col-md-4">
+                <label>Total de Cabezas</label>
+                <input type="number" id="totalCabezas" class="form-control">
+            </div>
+            <div class="col-md-4">
+                <label>Total de Libras Objetivo</label>
+                <input type="number" id="objetivoLibras" class="form-control">
+            </div>
+        </div>
+
+        <table class="table table-bordered table-hover" id="tablaRangos">
+            <thead class="table-dark">
+                <tr>
+                    <th>KIND</th>
+                    <th>HD</th>
+                    <th>GROSS WT.</th>
+                    <th>AVG.WT.</th>
+                    <th>DELETE</th>
+                </tr>
+            </thead>
+            <tbody id="tbodyRangos">
+                <!-- Se insertan filas dinámicamente -->
+            </tbody>
+        </table>
+
+        <button class="btn btn-success mb-3" onclick="agregarRango()">Agregar Rango</button>
+
+     <div id="resultado" class="row g-3">
+    <div class="col-md-6">
+        <div id="cardLibras" class="card card-estado text-center mb-3">
+            <div class="card-body">
+                <h6 class="card-title">Estado de Libras</h6>
+                <h4 id="estadoLibras">Faltan 0 lbs</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div id="cardCabezas" class="card card-estado text-center mb-3">
+            <div class="card-body">
+                <h6 class="card-title">Estado de Cabezas</h6>
+                <h4 id="estadoCabezas">Faltan 0</h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+    </div>
+
+    
+
+
+    <script>
+        let rangos = [
+        
+        ];
+
+ function renderizarTabla() {
+    const tbody = document.getElementById("tbodyRangos");
+    tbody.innerHTML = "";
+
+    rangos.forEach((r, i) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+            <td><input class="form-control" value="${r.rango}" onchange="actualizarRango(${i}, 'rango', this.value)"></td>
+            <td><input type="number" class="form-control" value="${r.cabezas}" onchange="actualizarRango(${i}, 'cabezas', this.value)"></td>
+            <td>${(r.cabezas * r.promedio).toLocaleString("es-MX", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
+            <td><input type="number" class="form-control" value="${r.promedio}" onchange="actualizarRango(${i}, 'promedio', this.value)"></td>
+            <td><button class="btn btn-danger btn-sm" onclick="eliminarRango(${i})">X</button></td>
+        `;
+
+        tbody.appendChild(row);
+
+        // Agrega evento a inputs numéricos de esta fila
+        const inputsNumero = row.querySelectorAll('input[type="number"]');
+        inputsNumero.forEach(input => agregarEventosFocusBlur(input));
+    });
+
+    calcular();
+}
+
+
+        function actualizarRango(index, campo, valor) {
+            rangos[index][campo] = campo === 'rango' ? valor : parseFloat(valor);
+            renderizarTabla();
+        }
+
+        function eliminarRango(index) {
+            rangos.splice(index, 1);
+            renderizarTabla();
+        }
+
+        function agregarRango() {
+            rangos.push({ rango: "", cabezas: 0, promedio: 0 });
+            renderizarTabla();
+        }
+
+       function calcular() {
+    const totalCabezas = document.getElementById("totalCabezas").value;
+    const objetivoLibras = document.getElementById("objetivoLibras").value;
+
+    fetch("/calcular", {
+        method: "POST",
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            total_cabezas: totalCabezas,
+            objetivo_libras: objetivoLibras,
+            rangos: rangos
+        })
+    })
+    .then(res => res.json())
+   .then(data => {
+    // Libras
+    const estadoLibras = document.getElementById("estadoLibras");
+    const cardLibras = document.getElementById("cardLibras");
+
+    if (data.faltan_libras > 0) {
+        estadoLibras.innerText = `Faltan ${data.faltan_libras.toFixed(2)} lbs`;
+        cardLibras.className = "card card-estado estado-faltan text-center mb-3";
+    } else if (data.faltan_libras < 0) {
+        estadoLibras.innerText = `Sobran ${Math.abs(data.faltan_libras).toFixed(2)} lbs`;
+        cardLibras.className = "card card-estado estado-sobran text-center mb-3";
+    } else {
+        estadoLibras.innerText = `Exactas`;
+        cardLibras.className = "card card-estado estado-exacto text-center mb-3";
+    }
+
+    // Cabezas
+    const estadoCabezas = document.getElementById("estadoCabezas");
+    const cardCabezas = document.getElementById("cardCabezas");
+
+    if (data.faltan_cabezas > 0) {
+        estadoCabezas.innerText = `Faltan ${data.faltan_cabezas} cabezas`;
+        cardCabezas.className = "card card-estado estado-faltan text-center mb-3";
+    } else if (data.faltan_cabezas < 0) {
+        estadoCabezas.innerText = `Sobran ${Math.abs(data.faltan_cabezas)} cabezas`;
+        cardCabezas.className = "card card-estado estado-sobran text-center mb-3";
+    } else {
+        estadoCabezas.innerText = `Exactas`;
+        cardCabezas.className = "card card-estado estado-exacto text-center mb-3";
+    }
+});
+
+}
+
+function agregarEventosFocusBlur(input) {
+    input.addEventListener("focus", function() {
+        if (this.value === "0") {
+            this.value = "";
+        }
+    });
+    input.addEventListener("blur", function() {
+        if (this.value === "") {
+            this.value = "0";
+        }
+    });
+}
+
+function exportarExcel() {
+    const data = rangos.map(r => ({
+        KIND: r.rango,
+        HD: r.cabezas,
+        "GROSS WT.": (r.cabezas * r.promedio),
+        "AVG.WT.": r.promedio
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Rangos");
+
+    XLSX.writeFile(workbook, "liquidacion.xlsx");
+}
+
+
+        renderizarTabla();
+
+
+    </script>
+</body>
+</html>
